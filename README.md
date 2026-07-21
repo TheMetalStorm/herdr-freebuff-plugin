@@ -30,10 +30,10 @@ herdr plugin link /path/to/herdr-freebuff-plugin
 herdr plugin action invoke freebuff.integration.setup
 ```
 
-Or from GitHub:
+Or from GitHub (requires repo access):
 
 ```bash
-herdr plugin install gh:simon/herdr-freebuff-plugin
+herdr plugin install gh:TheMetalStorm/herdr-freebuff-plugin
 herdr plugin action invoke freebuff.integration.setup
 ```
 
