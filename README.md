@@ -33,7 +33,7 @@ herdr plugin action invoke freebuff.integration.setup
 Or from GitHub (requires repo access):
 
 ```bash
-herdr plugin install gh:TheMetalStorm/herdr-freebuff-plugin
+herdr plugin install TheMetalStorm/herdr-freebuff-plugin
 herdr plugin action invoke freebuff.integration.setup
 ```
 
