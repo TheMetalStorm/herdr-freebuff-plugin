@@ -1,0 +1,22 @@
+#!/bin/sh
+# Fake freebuff binary for testing.
+# Simulates a freebuff TUI session: sleeps until killed.
+# Usage: freebuff [--continue [session-id]]
+
+echo "[fake freebuff] started with args: $*" >&2
+
+# If given --continue with a session id, echo that to stderr for test assertions
+session_id=""
+case "${1:-}" in
+  --continue)
+    session_id="${2:-}"
+    if [ -n "$session_id" ]; then
+      echo "[fake freebuff] resuming session: $session_id" >&2
+    else
+      echo "[fake freebuff] continuing last session" >&2
+    fi
+    ;;
+esac
+
+# Simulate running until killed
+while true; do sleep 1; done

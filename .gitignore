@@ -1,0 +1,23 @@
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Temporary / test artefacts
+/tmp/
+/tmp/*
+*.log
+*.tmp
+
+# Editor
+*.swp
+*.swo
+*~
+
+# herdr stub call logs (created during test or dev)
+HERDR_CALL_LOG*
+
+# Per-user config copies
+/local/
+
+# CommandCode AI habit files (per-user, not project-level)
+.commandcode/

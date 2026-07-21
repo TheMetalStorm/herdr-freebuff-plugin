@@ -1,0 +1,12 @@
+   [08:20 PM]
+   ask me a multiple choice question
+
+  • Thinking
+    The user wants a multiple choice question. I'll ask one.
+
+This is my question...
+
+  [response interrupted]
+
+  [08:21 PM] • ~/Dev
+  $ 
