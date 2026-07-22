@@ -134,17 +134,23 @@ HERDR_STUB_PANE_CONTENT_test_pane_5="$PROJECT_ROOT/tests/fixtures/pane-answer-ch
 result=$(detect_screen_state "test.pane.5")
 t_is "answered" "$result" "'Your answer:' with boxed answer detected via screen content"
 
-t_title "detect_screen_state: returns empty for suggest_followups"
+t_title "detect_screen_state: returns thinking for suggest_followups"
 HERDR_STUB_PANE_CONTENT_test_pane_2="$PROJECT_ROOT/tests/fixtures/pane-suggest-followups.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_2
 result=$(detect_screen_state "test.pane.2")
-t_is "" "$result" "suggest_followups NOT detected as blocked"
+t_is "thinking" "$result" "suggest_followups has • Thinking -> thinking"
 
-t_title "detect_screen_state: returns empty for plain working output"
+t_title "detect_screen_state: returns thinking for plain working output"
 HERDR_STUB_PANE_CONTENT_test_pane_3="$PROJECT_ROOT/tests/fixtures/pane-plain.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_3
 result=$(detect_screen_state "test.pane.3")
-t_is "" "$result" "plain thinking output NOT detected as blocked"
+t_is "thinking" "$result" "plain thinking output has • Thinking -> thinking"
+
+t_title "detect_screen_state: returns empty for truly idle output"
+HERDR_STUB_PANE_CONTENT_test_pane_6="$PROJECT_ROOT/tests/fixtures/pane-idle.txt" \
+  export HERDR_STUB_PANE_CONTENT_test_pane_6
+result=$(detect_screen_state "test.pane.6")
+t_is "" "$result" "idle pane with no signals -> empty"
 
 t_title "detect_screen_state: empty pane_id returns empty silently"
 result=$(detect_screen_state "")
@@ -222,7 +228,25 @@ result=$(classify "$chat_dir" "test.pane.4")
 t_is "idle" "$result" "idle files + [response interrupted] on screen -> idle (not overridden)"
 rm -rf "$chat_dir"
 
+t_title "classify: file=blocked + pane=thinking -> working"
+chat_dir=$(mktemp -d)
+make_fake_chat "$chat_dir" "blocked"
+HERDR_STUB_PANE_CONTENT_test_pane_3="$PROJECT_ROOT/tests/fixtures/pane-plain.txt" \
+  export HERDR_STUB_PANE_CONTENT_test_pane_3
+result=$(classify "$chat_dir" "test.pane.3")
+t_is "working" "$result" "blocked files + • Thinking on screen -> working"
+rm -rf "$chat_dir"
+
+t_title "classify: file=working + pane=thinking -> working (no override)"
+chat_dir=$(mktemp -d)
+make_fake_chat "$chat_dir" "working"
+HERDR_STUB_PANE_CONTENT_test_pane_3="$PROJECT_ROOT/tests/fixtures/pane-plain.txt" \
+  export HERDR_STUB_PANE_CONTENT_test_pane_3
+result=$(classify "$chat_dir" "test.pane.3")
+t_is "working" "$result" "working files + • Thinking on screen -> working (not overridden)"
+rm -rf "$chat_dir"
+
 unset HERDR_STUB_PANE_CONTENT_test_pane_1 HERDR_STUB_PANE_CONTENT_test_pane_2 \
   HERDR_STUB_PANE_CONTENT_test_pane_3 HERDR_STUB_PANE_CONTENT_test_pane_4 \
-  HERDR_STUB_PANE_CONTENT_test_pane_5
+  HERDR_STUB_PANE_CONTENT_test_pane_5 HERDR_STUB_PANE_CONTENT_test_pane_6
 unset HERDR_BIN_PATH

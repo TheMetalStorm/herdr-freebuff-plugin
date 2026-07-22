@@ -57,8 +57,15 @@ detect_screen_state() {
     return
   fi
 
-  # 4. No signal
-  return
+  # 4. AI processing heartbeat — "• Thinking" or "Thinking..." on screen.
+  #     This persists for the entire duration of AI processing, bridging the
+  #     gap between the "Your answer:" box scrolling off and file-based
+  #     classification catching up (next Main prompt finished).
+  #     The bullet "•" is Unicode U+2022.
+  printf '%s' "$content" | grep -qE '• Thinking|Thinking\.\.\.' && { printf thinking; return; }
+
+  # 5. No signal — explicitly return 0 so callers with set -e don't abort
+  return 0
 }
 
 # Detect if the latest ai message has an unresolved ask-user block.
@@ -217,9 +224,9 @@ classify() {
     # from the previous turn still on disk, but the popup is gone).
     if [ "$state" = "blocked" ]; then
       case "$sig" in
-        interrupted) state=idle ;;      # Esc abort       -> idle
-        answered)    state=working ;;   # answer chosen   -> AI processing
-        ""          ) ;;                # no signal: keep file-based blocked
+        interrupted)        state=idle ;;      # Esc abort       -> idle
+        answered|thinking)  state=working ;;   # answer chosen or AI processing
+        ""                ) ;;                # no signal: keep file-based blocked
       esac
     fi
   fi

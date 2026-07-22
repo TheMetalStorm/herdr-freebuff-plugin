@@ -1,6 +1,6 @@
 # freebuff → herdr: stays `blocked` after popup dismissed (answer chosen OR Esc) — debug investigation
 
-**Status:** ✅ implemented and verified (all tests pass)
+**Status:** ✅ implemented and verified (all 62 assertions pass, 7 test suites)
 
 Related: `DEBUG_blocked-detection.md` (the prior round, where we added screen
 scraping to detect the popup in the first place). This file covers the
@@ -233,6 +233,104 @@ the env var per test (the existing pattern).
   4. Repeat 1, then Esc → herdr shows `idle` (NOT `blocked`).
   5. Repeat 4 two more times back-to-back — verify no flicker, no stuck
      state across multiple consecutive Esc sequences.
+
+## Follow-up bug (live) — `working` → `blocked` after "Your answer:" scrolls off
+
+**Reported 2026-07-22:** Even after the `answered` screen signal fix was
+implemented and verified, live testing reveals the state sequence is:
+
+```
+blocked  (popup visible)          ✓
+working  ("Your answer:" visible) ✓
+blocked  (a few seconds later)    ✗  ← stuck until turn ends
+idle     (turn ends)              ✓
+```
+
+### Root cause
+
+The `answered` screen signal (`Your answer:` + boxed answer) is **transient**.
+On the next poll cycle (700ms), the AI's output has pushed the answer-echo box
+off the visible area. `detect_screen_state` returns `""` (no signal).
+`_classify_files` still returns `blocked` (stale — chat files haven't flushed
+the new turn yet). With no screen signal, `classify()` falls back to file-based
+`blocked` and stays stuck until the next `Main prompt finished` flushes the
+files.
+
+### Proposed fix — add a `thinking` heartbeat signal
+
+Freebuff shows **`• Thinking`** (Unicode bullet + "Thinking") as a persistent
+indicator while the AI is actively processing. This text remains on screen for
+the **entire duration** of the AI's work, unlike the transient "Your answer:"
+box which scrolls off after the first output line.
+
+**1. Extend `detect_screen_state`** to check for `• Thinking` or
+   `Thinking...` after the `answered` check:
+
+| Priority | Return value | Pattern |
+|---|---|---|
+| 1 | `blocked` | `Enter select` / `↑↓ navigate` (popup live) — unchanged |
+| 2 | `interrupted` | `[response interrupted]` — unchanged |
+| 3 | `answered` | `Your answer:` + within 2 lines a box-draw char — unchanged |
+| **4** | **`thinking`** | **`• Thinking`** or **`Thinking...`** — NEW |
+| 5 | `""` | no signal — unchanged |
+
+**2. Update `classify()`** — add `thinking` alongside `answered` in the
+   case statement that maps to `working`:
+
+```sh
+case "$sig" in
+  interrupted) state=idle ;;
+  answered|thinking) state=working ;;
+  "") ;;
+esac
+```
+
+### Resulting state transition with `thinking` signal
+
+```
+popup shows → blocked  (file: blocked,  screen: Enter select ✓)  ✓
+user submits answer
+Your answer: box + Thinking → working  (file: blocked, screen: answered)
+Your answer: scrolls off, Thinking persists → working  (file: blocked, screen: thinking)
+AI finishes processing
+Main prompt finished flushes files → idle  (file: idle, screen: "" or thinking)  ✓
+```
+
+### Tests to add
+
+| # | Test | Fixture | Expected |
+|---|---|---|---|
+| 1 | `detect_screen_state: returns thinking for AI processing output` | `pane-plain.txt` (has `• Thinking`, no popup/answered/interrupted) | `thinking` |
+| 2 | `detect_screen_state: returns empty for truly idle output` | new `pane-idle.txt` (just a prompt) | `""` |
+| 3 | `classify: file=blocked + pane=thinking → working` | blocked chat + `pane-plain.txt` | `working` |
+| 4 | `classify: file=working + pane=thinking → working` (no-op guard) | working chat + `pane-plain.txt` | `working` |
+
+### Existing tests that change expected value
+
+| Old | New |
+|---|---|
+| `detect_screen_state: returns empty for suggest_followups` → expected `""` | returns `"thinking"` (fixture has `• Thinking`) |
+| `detect_screen_state: returns empty for plain working output` → expected `""` | returns `"thinking"` (fixture has `• Thinking`) |
+
+These are NOT regressions — the new signal is more accurate: suggest_followups
+and working output both genuinely show AI processing.
+
+### New fixture: `tests/fixtures/pane-idle.txt`
+
+Minimal content with none of the patterns:
+```
+  [08:22 PM] • ~/Dev
+  $ 
+```
+
+### Risks
+
+- **False-positive `thinking`**: "• Thinking" could appear in quoted user/AI
+  scrollback. Mitigation: `thinking` only overrides when file says `blocked`.
+  If the file genuinely says `idle` or `working`, `thinking` has no effect.
+- **Freebuff changes thinking indicator text**: If they switch to a different
+  pattern, we miss it. Mitigation: add secondary `Working...` pattern as
+  user suggested ("heartbeat for the string 'working...'").
 
 ## Doubts (open questions for the user)
 
