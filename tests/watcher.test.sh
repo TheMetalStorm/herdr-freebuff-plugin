@@ -246,6 +246,52 @@ result=$(classify "$chat_dir" "test.pane.3")
 t_is "working" "$result" "working files + • Thinking on screen -> working (not overridden)"
 rm -rf "$chat_dir"
 
+t_title "classify: file=blocked + no screen signals + working timeline -> working"
+chat_dir=$(mktemp -d)
+# Blocked messages (ask_user, no user reply)
+cat > "$chat_dir/chat-messages.json" <<'JSONEOF'
+[
+  {"id":"divider-1","variant":"divider","content":"","blocks":[],"timestamp":"00:00 AM"},
+  {"id":"user-1","variant":"user","content":"hello","blocks":[],"timestamp":"00:01 AM"},
+  {"id":"ai-1","variant":"ai","content":"","blocks":[{"type":"text","content":"result"},{"type":"ask-user","toolCallId":"t1","questions":[{"question":"choose option","header":"pick","options":[{"label":"A","description":"desc"}]}]}],"timestamp":"00:03 AM"}
+]
+JSONEOF
+# Working timeline (Start agent after last Main prompt finished — AI is processing)
+cat > "$chat_dir/log.jsonl" <<'JSONEOF'
+{"level":"INFO","timestamp":"2026-01-01T00:01:00.000Z","msg":"[send-message] Sending message"}
+{"level":"INFO","timestamp":"2026-01-01T00:02:00.000Z","msg":"Start agent test-agent step 1 (run1)"}
+{"level":"INFO","timestamp":"2026-01-01T00:02:05.000Z","msg":"End agent test-agent step 1 (run1)"}
+{"level":"INFO","timestamp":"2026-01-01T00:02:10.000Z","msg":"Start agent test-agent step 2 (run1)"}
+JSONEOF
+# No screen signals (idle fixture — no popup, no markers)
+HERDR_STUB_PANE_CONTENT_test_pane_6="$PROJECT_ROOT/tests/fixtures/pane-idle.txt" \
+  export HERDR_STUB_PANE_CONTENT_test_pane_6
+result=$(classify "$chat_dir" "test.pane.6")
+t_is "working" "$result" "blocked files + no screen signals + working timeline -> working (not stale blocked)"
+rm -rf "$chat_dir"
+
+t_title "classify: file=blocked + no screen signals + idle timeline -> idle"
+chat_dir=$(mktemp -d)
+# Blocked messages (same as above)
+cat > "$chat_dir/chat-messages.json" <<'JSONEOF'
+[
+  {"id":"divider-1","variant":"divider","content":"","blocks":[],"timestamp":"00:00 AM"},
+  {"id":"user-1","variant":"user","content":"hello","blocks":[],"timestamp":"00:01 AM"},
+  {"id":"ai-1","variant":"ai","content":"","blocks":[{"type":"text","content":"result"},{"type":"ask-user","toolCallId":"t1","questions":[{"question":"choose option","header":"pick","options":[{"label":"A","description":"desc"}]}]}],"timestamp":"00:03 AM"}
+]
+JSONEOF
+# Idle timeline (Main prompt finished after last start — turn is done)
+cat > "$chat_dir/log.jsonl" <<'JSONEOF'
+{"level":"INFO","timestamp":"2026-01-01T00:01:00.000Z","msg":"[send-message] Sending message"}
+{"level":"INFO","timestamp":"2026-01-01T00:02:00.000Z","msg":"Start agent test-agent step 1 (run1)"}
+{"level":"INFO","timestamp":"2026-01-01T00:02:10.000Z","msg":"Main prompt finished"}
+JSONEOF
+HERDR_STUB_PANE_CONTENT_test_pane_6="$PROJECT_ROOT/tests/fixtures/pane-idle.txt" \
+  export HERDR_STUB_PANE_CONTENT_test_pane_6
+result=$(classify "$chat_dir" "test.pane.6")
+t_is "idle" "$result" "blocked files + no screen signals + idle timeline -> idle (not stale blocked)"
+rm -rf "$chat_dir"
+
 unset HERDR_STUB_PANE_CONTENT_test_pane_1 HERDR_STUB_PANE_CONTENT_test_pane_2 \
   HERDR_STUB_PANE_CONTENT_test_pane_3 HERDR_STUB_PANE_CONTENT_test_pane_4 \
   HERDR_STUB_PANE_CONTENT_test_pane_5 HERDR_STUB_PANE_CONTENT_test_pane_6

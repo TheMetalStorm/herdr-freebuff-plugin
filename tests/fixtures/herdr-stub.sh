@@ -85,6 +85,11 @@ case "$subcmd" in
         # Look up content from env var based on pane id (dots/dashes -> underscores)
         key="HERDR_STUB_PANE_CONTENT_$(printf '%s' "$pane_id" | tr '.-' '__')"
         eval "val=\${$key:-}"
+        # Fallback to a shared content file (useful for e2e tests where env
+        # vars are inherited at fork and cannot be changed per-phase).
+        if [ -z "$val" ] && [ -n "${HERDR_STUB_CONTENT_FILE:-}" ]; then
+          [ -f "$HERDR_STUB_CONTENT_FILE" ] && val="$HERDR_STUB_CONTENT_FILE"
+        fi
         if [ -z "$val" ]; then
           # No content configured — return empty
           exit 0

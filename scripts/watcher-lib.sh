@@ -139,25 +139,14 @@ find_newest_chat() {
   ' 2>/dev/null
 }
 
-# Classify freebuff's current state from chat files only.
-# Argument: chat directory path. Echoes: blocked | working | idle.
-_classify_files() {
+# Classify freebuff's current state from log.jsonl timeline only.
+# No blocked check — just working vs idle based on log timestamps.
+# Argument: chat directory path. Echoes: working | idle.
+_classify_timeline() {
   chat_dir="$1"
   [ -d "$chat_dir" ] || { printf idle; return; }
 
-  msgs="$chat_dir/chat-messages.json"
   logf="$chat_dir/log.jsonl"
-
-  # 1. Blocked: unresolved ask-user block.
-  # freebuff finishes the turn (Main prompt finished) BEFORE showing an ask-user
-  # multiple-choice question, so blocked must be checked first regardless of
-  # turn state. Once the user replies, lastUserIdx > lastAiIdx and blocked clears.
-  if [ -f "$msgs" ]; then
-    blocked=$(detect_blocked < "$msgs" 2>/dev/null)
-    [ "$blocked" = "blocked" ] && { printf blocked; return; }
-  fi
-
-  # 2. Working vs idle from log.jsonl timeline
   last_start=""
   last_finish=""
 
@@ -188,8 +177,28 @@ _classify_files() {
   [ -n "$last_start" ] && { printf working; return; }
   [ -n "$last_finish" ] && { printf idle; return; }
 
-  # 3. Default
   printf idle
+}
+
+# Classify freebuff's current state from chat files only.
+# Argument: chat directory path. Echoes: blocked | working | idle.
+_classify_files() {
+  chat_dir="$1"
+  [ -d "$chat_dir" ] || { printf idle; return; }
+
+  msgs="$chat_dir/chat-messages.json"
+
+  # 1. Blocked: unresolved ask-user block.
+  # freebuff finishes the turn (Main prompt finished) BEFORE showing an ask-user
+  # multiple-choice question, so blocked must be checked first regardless of
+  # turn state. Once the user replies, lastUserIdx > lastAiIdx and blocked clears.
+  if [ -f "$msgs" ]; then
+    blocked=$(detect_blocked < "$msgs" 2>/dev/null)
+    [ "$blocked" = "blocked" ] && { printf blocked; return; }
+  fi
+
+  # 2. Timeline-based working / idle
+  _classify_timeline "$chat_dir"
 }
 
 # Classify freebuff's current state from chat files, with screen-content
@@ -226,7 +235,13 @@ classify() {
       case "$sig" in
         interrupted)        state=idle ;;      # Esc abort       -> idle
         answered|thinking)  state=working ;;   # answer chosen or AI processing
-        ""                ) ;;                # no signal: keep file-based blocked
+        ""                )
+          # Files say blocked but screen shows no popup and no markers.
+          # The blocked state is stale — popup was dismissed but files
+          # haven't flushed yet. Fall back to the log timeline (working
+          # if AI is still processing, idle if turn has completed).
+          state=$(_classify_timeline "$chat_dir")
+          ;; 
       esac
     fi
   fi

@@ -18,6 +18,13 @@ export HERDR_CALL_LOG="/tmp/herdr-e2e-call-log.txt"
 export HERDR_STUB_LAST="/tmp/herdr-e2e-last.txt"
 : > "$HERDR_STUB_LAST"
 
+# Shared content file for the pane-stub: the e2e test updates this file
+# per-phase to simulate different on-screen states. The watcher's stub
+# reads from this file each time it runs `herdr pane read`.
+E2E_PANE_CONTENT="/tmp/herdr-e2e-pane-content.txt"
+export HERDR_STUB_CONTENT_FILE="$E2E_PANE_CONTENT"
+: > "$E2E_PANE_CONTENT"
+
 PROJECT_DIR="/tmp/test-project"
 mkdir -p "$PROJECT_DIR"
 cd "$PROJECT_DIR"
@@ -58,6 +65,9 @@ else
 fi
 
 t_title "e2e: watcher reports blocked when ask-user pending"
+# Simulate the ask_user popup on screen (needed now that classify validates
+# screen confirms popup before returning blocked with a stale-file fallback)
+cat "$PROJECT_ROOT/tests/fixtures/pane-ask-user.txt" > "$E2E_PANE_CONTENT"
 BLOCK_CHAT="$CHATS_DIR/2026-01-01T00-05-00.000Z"
 make_fake_chat "$BLOCK_CHAT" "blocked"
 sleep 3
@@ -71,6 +81,8 @@ fi
 t_title "e2e: watcher reports idle when turn completes"
 DONE_CHAT="$CHATS_DIR/2026-01-01T00-10-00.000Z"
 make_fake_chat "$DONE_CHAT" "done"
+# Clear screen content — turn is done, no popup
+: > "$E2E_PANE_CONTENT"
 sleep 3
 
 if grep -qF -- "--state idle" "$HERDR_CALL_LOG" 2>/dev/null; then
@@ -91,8 +103,8 @@ fi
 
 # Cleanup
 rm -rf "$FAKEHOME" "$PROJECT_DIR"
-rm -f /tmp/herdr-e2e-call-log.txt /tmp/herdr-e2e-last.txt /tmp/e2e-debug.log
+rm -f /tmp/herdr-e2e-call-log.txt /tmp/herdr-e2e-last.txt /tmp/e2e-debug.log /tmp/herdr-e2e-pane-content.txt
 export HOME="$OLD_HOME"
 export PATH="$OLD_PATH"
 cd "$OLD_PWD"
-unset HERDR_CALL_LOG HERDR_STUB_LAST
+unset HERDR_CALL_LOG HERDR_STUB_LAST HERDR_STUB_CONTENT_FILE
