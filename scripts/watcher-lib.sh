@@ -57,12 +57,12 @@ detect_screen_state() {
     return
   fi
 
-  # 4. AI processing heartbeat — "• Thinking" or "Thinking..." on screen.
-  #     This persists for the entire duration of AI processing, bridging the
-  #     gap between the "Your answer:" box scrolling off and file-based
-  #     classification catching up (next Main prompt finished).
+  # 4. AI processing heartbeat — "• Thinking", "Thinking...", or "Working..."
+  #     on screen. These persist for the entire duration of AI processing,
+  #     bridging the gap between the "Your answer:" box scrolling off and
+  #     file-based classification catching up (next Main prompt finished).
   #     The bullet "•" is Unicode U+2022.
-  printf '%s' "$content" | grep -qE '• Thinking|Thinking\.\.\.' && { printf thinking; return; }
+  printf '%s' "$content" | grep -qE '• Thinking|Thinking\.\.\.|Working\.\.\.' && { printf thinking; return; }
 
   # 5. No signal — explicitly return 0 so callers with set -e don't abort
   return 0
@@ -201,50 +201,47 @@ _classify_files() {
   _classify_timeline "$chat_dir"
 }
 
-# Classify freebuff's current state from chat files, with screen-content
-# fallback for states that freebuff does not write to disk promptly.
+# Classify freebuff's current state.
 #
-# freebuff flushes chat files only at end-of-turn, so:
-#   - A live ask_user popup is invisible to file-based detection (files are
-#     stale from the previous turn). Screen override: working → blocked.
-#   - After the user answers or Esc's, chat files remain stale (still show
-#     the unresolved ask_user block). Screen override: blocked → working
-#     (answer chosen) or blocked → idle (Esc abort).
+# When pane_id is available, the visible screen content is authoritative:
+#   - ask_user popup visible  → blocked
+#   - answer echo / thinking heartbeat on screen → working
+#   - [response interrupted] on screen → idle
+#   - no screen signal → use timeline from log files (stale blocked is ignored
+#     since the popup is visually absent)
 #
-# Arguments: chat_dir [pane_id]
-# When pane_id is provided, the function consults the visible pane content
-# to resolve ambiguous or stale file-based states.
+# Without pane_id, falls back to full file-based detection (including the
+# ask_user block check from chat-messages.json).
 classify() {
   chat_dir="$1"
   pane_id="${2:-}"
 
-  state=$(_classify_files "$chat_dir")
-
   if [ -n "$pane_id" ]; then
-    sig=$(detect_screen_state "$pane_id")   # blocked | interrupted | answered | ""
+    sig=$(detect_screen_state "$pane_id")   # blocked | interrupted | answered | thinking | ""
 
-    # Live popup overrides ANY file state (including a brief end-of-turn idle
-    # that would otherwise flicker before the popup is file-detectable).
-    if [ "$sig" = "blocked" ]; then
-      state=blocked
-    fi
-
-    # Screen signals resolve a stale file-based "blocked" (ask_user block
-    # from the previous turn still on disk, but the popup is gone).
-    if [ "$state" = "blocked" ]; then
-      case "$sig" in
-        interrupted)        state=idle ;;      # Esc abort       -> idle
-        answered|thinking)  state=working ;;   # answer chosen or AI processing
-        ""                )
-          # Files say blocked but screen shows no popup and no markers.
-          # The blocked state is stale — popup was dismissed but files
-          # haven't flushed yet. Fall back to the log timeline (working
-          # if AI is still processing, idle if turn has completed).
-          state=$(_classify_timeline "$chat_dir")
-          ;; 
-      esac
-    fi
+    # Screen signals are authoritative
+    case "$sig" in
+      blocked)
+        printf blocked
+        return
+        ;;
+      interrupted)
+        printf idle
+        return
+        ;;
+      answered|thinking)
+        printf working
+        return
+        ;;
+      "")
+        # No screen signal — popup is visually absent so any file-based
+        # "blocked" would be stale. Use the log timeline directly.
+        _classify_timeline "$chat_dir"
+        return
+        ;;
+    esac
   fi
 
-  printf '%s' "$state"
+  # No pane_id: file-based detection (including blocked check from messages)
+  _classify_files "$chat_dir"
 }

@@ -210,22 +210,22 @@ result=$(classify "$chat_dir")
 t_is "blocked" "$result" "blocked files + no pane_id -> blocked (no screen check)"
 rm -rf "$chat_dir"
 
-t_title "classify: file=working + pane=interrupted -> working (no override)"
+t_title "classify: working files + pane=interrupted -> idle (screen first)"
 chat_dir=$(mktemp -d)
 make_fake_chat "$chat_dir" "working"
 HERDR_STUB_PANE_CONTENT_test_pane_4="$PROJECT_ROOT/tests/fixtures/pane-response-interrupted.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_4
 result=$(classify "$chat_dir" "test.pane.4")
-t_is "working" "$result" "working files + [response interrupted] on screen -> working (not overridden)"
+t_is "idle" "$result" "working files + [response interrupted] on screen -> idle (screen is authoritative)"
 rm -rf "$chat_dir"
 
-t_title "classify: file=idle + pane=interrupted -> idle (no override)"
+t_title "classify: idle files + pane=interrupted -> idle (screen first)"
 chat_dir=$(mktemp -d)
 make_fake_chat "$chat_dir" "idle"
 HERDR_STUB_PANE_CONTENT_test_pane_4="$PROJECT_ROOT/tests/fixtures/pane-response-interrupted.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_4
 result=$(classify "$chat_dir" "test.pane.4")
-t_is "idle" "$result" "idle files + [response interrupted] on screen -> idle (not overridden)"
+t_is "idle" "$result" "idle files + [response interrupted] on screen -> idle (screen says idle)"
 rm -rf "$chat_dir"
 
 t_title "classify: file=blocked + pane=thinking -> working"
@@ -237,26 +237,21 @@ result=$(classify "$chat_dir" "test.pane.3")
 t_is "working" "$result" "blocked files + • Thinking on screen -> working"
 rm -rf "$chat_dir"
 
-t_title "classify: file=working + pane=thinking -> working (no override)"
+t_title "classify: working files + pane=thinking -> working (screen first)"
 chat_dir=$(mktemp -d)
 make_fake_chat "$chat_dir" "working"
 HERDR_STUB_PANE_CONTENT_test_pane_3="$PROJECT_ROOT/tests/fixtures/pane-plain.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_3
 result=$(classify "$chat_dir" "test.pane.3")
-t_is "working" "$result" "working files + • Thinking on screen -> working (not overridden)"
+t_is "working" "$result" "working files + • Thinking on screen -> working (screen says working)"
 rm -rf "$chat_dir"
 
-t_title "classify: file=blocked + no screen signals + working timeline -> working"
+t_title "classify: no screen signals + working timeline -> working"
 chat_dir=$(mktemp -d)
-# Blocked messages (ask_user, no user reply)
-cat > "$chat_dir/chat-messages.json" <<'JSONEOF'
-[
-  {"id":"divider-1","variant":"divider","content":"","blocks":[],"timestamp":"00:00 AM"},
-  {"id":"user-1","variant":"user","content":"hello","blocks":[],"timestamp":"00:01 AM"},
-  {"id":"ai-1","variant":"ai","content":"","blocks":[{"type":"text","content":"result"},{"type":"ask-user","toolCallId":"t1","questions":[{"question":"choose option","header":"pick","options":[{"label":"A","description":"desc"}]}]}],"timestamp":"00:03 AM"}
-]
-JSONEOF
 # Working timeline (Start agent after last Main prompt finished — AI is processing)
+cat > "$chat_dir/chat-messages.json" <<'JSONEOF'
+[{"id":"divider-1","variant":"divider","content":"","blocks":[],"timestamp":"00:00 AM"}]
+JSONEOF
 cat > "$chat_dir/log.jsonl" <<'JSONEOF'
 {"level":"INFO","timestamp":"2026-01-01T00:01:00.000Z","msg":"[send-message] Sending message"}
 {"level":"INFO","timestamp":"2026-01-01T00:02:00.000Z","msg":"Start agent test-agent step 1 (run1)"}
@@ -267,20 +262,15 @@ JSONEOF
 HERDR_STUB_PANE_CONTENT_test_pane_6="$PROJECT_ROOT/tests/fixtures/pane-idle.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_6
 result=$(classify "$chat_dir" "test.pane.6")
-t_is "working" "$result" "blocked files + no screen signals + working timeline -> working (not stale blocked)"
+t_is "working" "$result" "no screen signals + working timeline -> working (timeline fallback)"
 rm -rf "$chat_dir"
 
-t_title "classify: file=blocked + no screen signals + idle timeline -> idle"
+t_title "classify: no screen signals + idle timeline -> idle"
 chat_dir=$(mktemp -d)
-# Blocked messages (same as above)
-cat > "$chat_dir/chat-messages.json" <<'JSONEOF'
-[
-  {"id":"divider-1","variant":"divider","content":"","blocks":[],"timestamp":"00:00 AM"},
-  {"id":"user-1","variant":"user","content":"hello","blocks":[],"timestamp":"00:01 AM"},
-  {"id":"ai-1","variant":"ai","content":"","blocks":[{"type":"text","content":"result"},{"type":"ask-user","toolCallId":"t1","questions":[{"question":"choose option","header":"pick","options":[{"label":"A","description":"desc"}]}]}],"timestamp":"00:03 AM"}
-]
-JSONEOF
 # Idle timeline (Main prompt finished after last start — turn is done)
+cat > "$chat_dir/chat-messages.json" <<'JSONEOF'
+[{"id":"divider-1","variant":"divider","content":"","blocks":[],"timestamp":"00:00 AM"}]
+JSONEOF
 cat > "$chat_dir/log.jsonl" <<'JSONEOF'
 {"level":"INFO","timestamp":"2026-01-01T00:01:00.000Z","msg":"[send-message] Sending message"}
 {"level":"INFO","timestamp":"2026-01-01T00:02:00.000Z","msg":"Start agent test-agent step 1 (run1)"}
@@ -289,7 +279,7 @@ JSONEOF
 HERDR_STUB_PANE_CONTENT_test_pane_6="$PROJECT_ROOT/tests/fixtures/pane-idle.txt" \
   export HERDR_STUB_PANE_CONTENT_test_pane_6
 result=$(classify "$chat_dir" "test.pane.6")
-t_is "idle" "$result" "blocked files + no screen signals + idle timeline -> idle (not stale blocked)"
+t_is "idle" "$result" "no screen signals + idle timeline -> idle (timeline fallback)"
 rm -rf "$chat_dir"
 
 unset HERDR_STUB_PANE_CONTENT_test_pane_1 HERDR_STUB_PANE_CONTENT_test_pane_2 \
